@@ -16,7 +16,6 @@
 - [Generate Embeddings](#generate-embeddings)
 - [List Running Models](#list-running-models)
 - [Version](#version)
-- [Experimental: Image Generation](#image-generation-experimental)
 
 ## Conventions
 
@@ -58,15 +57,6 @@ Advanced parameters (optional):
 - `raw`: if `true` no formatting will be applied to the prompt. You may choose to use the `raw` parameter if you are specifying a full templated prompt in your request to the API
 - `keep_alive`: controls how long the model will stay loaded into memory following the request (default: `5m`)
 - `context` (deprecated): the context parameter returned from a previous request to `/generate`, this can be used to keep a short conversational memory
-
-Experimental image generation parameters (for image generation models only):
-
-> [!WARNING]
-> These parameters are experimental and may change in future versions.
-
-- `width`: width of the generated image in pixels
-- `height`: height of the generated image in pixels
-- `steps`: number of diffusion steps
 
 #### Structured outputs
 
@@ -110,7 +100,8 @@ The final response in the stream also includes additional data about the generat
 - `total_duration`: time spent generating the response
 - `load_duration`: time spent in nanoseconds loading the model
 - `prompt_eval_count`: number of tokens in the prompt
-- `prompt_eval_duration`: time spent in nanoseconds evaluating the prompt
+- `prompt_eval_cached_count`: number of prompt tokens read from the cache
+- `prompt_eval_duration`: time spent in nanoseconds evaluating uncached prompt tokens
 - `eval_count`: number of tokens in the response
 - `eval_duration`: time in nanoseconds spent generating the response
 - `context`: an encoding of the conversation used in this response, this can be sent in the next request to keep a conversational memory
@@ -1189,7 +1180,7 @@ Create a model from:
 - a safetensors directory; or
 - a GGUF file.
 
-If you are creating a model from a safetensors directory or from a GGUF file, you must [create a blob](#create-a-blob) for each of the files and then use the file name and SHA256 digest associated with each blob in the `files` field.
+If you are creating a model from a safetensors directory or from a GGUF file, you must [push a blob](#push-a-blob) for each of the files and then use the file name and SHA256 digest associated with each blob in the `files` field.
 
 ### Parameters
 
@@ -1198,6 +1189,8 @@ If you are creating a model from a safetensors directory or from a GGUF file, yo
 - `files`: (optional) a dictionary of file names to SHA256 digests of blobs to create the model from
 - `adapters`: (optional) a dictionary of file names to SHA256 digests of blobs for LORA adapters
 - `template`: (optional) the prompt template for the model
+- `renderer`: (optional) the name of the renderer for the model
+- `parser`: (optional) the name of the parser for the model
 - `license`: (optional) a string or list of strings containing the license or licenses for the model
 - `system`: (optional) a string containing the system prompt for the model
 - `parameters`: (optional) a dictionary of parameters for the model (see [Modelfile](./modelfile.mdx#valid-parameters-and-values) for a list of parameters)
