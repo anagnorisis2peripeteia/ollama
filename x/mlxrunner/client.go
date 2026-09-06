@@ -26,7 +26,6 @@ import (
 	"github.com/ollama/ollama/format"
 	"github.com/ollama/ollama/llm"
 	"github.com/ollama/ollama/ml"
-	"github.com/ollama/ollama/x/imagegen"
 	"github.com/ollama/ollama/x/imagegen/manifest"
 )
 
@@ -48,7 +47,7 @@ type Client struct {
 // NewClient prepares a new MLX runner client for LLM models.
 // The subprocess is not started until Load() is called.
 func NewClient(modelName string, softContextLength int) (*Client, error) {
-	if err := imagegen.CheckPlatformSupport(); err != nil {
+	if err := checkPlatformSupport(); err != nil {
 		return nil, err
 	}
 
@@ -68,9 +67,23 @@ func NewClient(modelName string, softContextLength int) (*Client, error) {
 	return c, nil
 }
 
+func checkPlatformSupport() error {
+	switch runtime.GOOS {
+	case "darwin":
+		if runtime.GOARCH != "arm64" {
+			return fmt.Errorf("MLX on macOS requires Apple Silicon (arm64), got %s", runtime.GOARCH)
+		}
+		return nil
+	case "linux", "windows":
+		return nil
+	default:
+		return fmt.Errorf("MLX is not supported on %s", runtime.GOOS)
+	}
+}
+
 // WaitUntilRunning waits for the subprocess to be ready.
 func (c *Client) WaitUntilRunning(ctx context.Context) error {
-	timeout := time.After(2 * time.Minute)
+	timeout := time.After(envconfig.LoadTimeout())
 	ticker := time.NewTicker(100 * time.Millisecond)
 	defer ticker.Stop()
 
@@ -98,10 +111,13 @@ func (c *Client) WaitUntilRunning(ctx context.Context) error {
 }
 
 type CompletionRequest struct {
-	Prompt      string
-	Options     api.Options
-	Logprobs    bool
-	TopLogprobs int
+	Prompt                     string
+	Media                      []llm.MediaData
+	Format                     json.RawMessage
+	Options                    api.Options
+	Logprobs                   bool
+	TopLogprobs                int
+	IncludeIntermediateMetrics bool
 }
 
 type CompletionResponse struct {
@@ -109,10 +125,11 @@ type CompletionResponse struct {
 	Done       bool
 	DoneReason int
 
-	PromptEvalCount    int
-	PromptEvalDuration time.Duration
-	EvalCount          int
-	EvalDuration       time.Duration
+	PromptEvalCount       int
+	PromptEvalCachedCount *int
+	PromptEvalDuration    time.Duration
+	EvalCount             int
+	EvalDuration          time.Duration
 
 	Logprobs []llm.Logprob
 
@@ -141,9 +158,12 @@ func (c *Client) Close() error {
 // Completion implements llm.LlamaServer.
 func (c *Client) Completion(ctx context.Context, req llm.CompletionRequest, fn func(llm.CompletionResponse)) error {
 	creq := CompletionRequest{
-		Prompt:      req.Prompt,
-		Logprobs:    req.Logprobs,
-		TopLogprobs: req.TopLogprobs,
+		Prompt:                     req.Prompt,
+		Media:                      req.Media,
+		Format:                     req.Format,
+		Logprobs:                   req.Logprobs,
+		TopLogprobs:                req.TopLogprobs,
+		IncludeIntermediateMetrics: req.IncludeIntermediateMetrics,
 	}
 	if req.Options != nil {
 		creq.Options = *req.Options
@@ -188,14 +208,15 @@ func (c *Client) Completion(ctx context.Context, req llm.CompletionRequest, fn f
 		}
 
 		cresp := llm.CompletionResponse{
-			Content:            raw.Content,
-			Done:               raw.Done,
-			DoneReason:         llm.DoneReason(raw.DoneReason),
-			PromptEvalCount:    raw.PromptEvalCount,
-			PromptEvalDuration: raw.PromptEvalDuration,
-			EvalCount:          raw.EvalCount,
-			EvalDuration:       raw.EvalDuration,
-			Logprobs:           raw.Logprobs,
+			Content:               raw.Content,
+			Done:                  raw.Done,
+			DoneReason:            llm.DoneReason(raw.DoneReason),
+			PromptEvalCount:       raw.PromptEvalCount,
+			PromptEvalCachedCount: raw.PromptEvalCachedCount,
+			PromptEvalDuration:    raw.PromptEvalDuration,
+			EvalCount:             raw.EvalCount,
+			EvalDuration:          raw.EvalDuration,
+			Logprobs:              raw.Logprobs,
 		}
 
 		fn(cresp)
